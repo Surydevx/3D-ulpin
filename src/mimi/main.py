@@ -1,8 +1,10 @@
 import os
 import shutil
+import uuid
 from typing import List, Tuple
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,6 +21,16 @@ from .ulpin_generator import generate_3d_ulpin
 
 # --- Application & Service Initialization ---
 app = FastAPI(title="3D Cadastral Compiler API", version="1.0")
+
+# --- Enable CORS for Web Frontend ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all websites to connect during local development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],
+)
+
 detector = CadastralAnomalyDetector(tolerance_meters=0.5)
 
 # Initialize the global in-memory Octree (Covering a massive coordinate grid)
@@ -64,8 +76,9 @@ async def root():
 
 
 # --- Endpoint 1: Validation and Database Persistence ---
+# Note: Changed to `def` (from `async def`) because SQLAlchemy Session is synchronous.
 @app.post("/api/v1/cadastre/validate-building")
-async def validate_building(
+def validate_building(
     request: BuildingValidationRequest, db: Session = Depends(get_db)
 ):
     try:
@@ -126,8 +139,9 @@ async def validate_building(
 
 
 # --- Endpoint 2: Exact Geometric Computation (EGC) ---
+# Note: Changed to `def` because combinatorial geometry checks are heavy synchronous CPU tasks.
 @app.post("/api/v1/cadastre/check-conflict")
-async def check_underground_conflict(request: ConflictCheckRequest):
+def check_underground_conflict(request: ConflictCheckRequest):
     try:
         # Reconstruct the 3D parcels from the incoming JSON
         existing = VolumetricParcel(
@@ -159,13 +173,15 @@ async def check_underground_conflict(request: ConflictCheckRequest):
 
 
 # --- Endpoint 3: LiDAR Ingestion & Spatial Indexing ---
+# Note: Changed to `def` due to blocking file I/O. Added UUID & Finally block.
 @app.post("/api/v1/cadastre/ingest-lidar")
-async def ingest_lidar_point_cloud(
+def ingest_lidar_point_cloud(
     ulpin_id: str, file: UploadFile = File(...)
 ):
+    # Secure filename to prevent path traversal
+    temp_file_path = f"temp_{uuid.uuid4()}_{file.filename}"
     try:
         # 1. Save the uploaded file temporarily
-        temp_file_path = f"temp_{file.filename}"
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -184,16 +200,49 @@ async def ingest_lidar_point_cloud(
 
         inserted = cadastral_octree.insert(ulpin_id, parcel_box)
 
-        # Cleanup temp file
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
-
         return {
             "ulpin_id": ulpin_id,
             "status": "INDEXED_IN_OCTREE" if inserted else "OUT_OF_BOUNDS",
             "extracted_geometry": geometry_bounds,
             "computational_complexity": "O(log n) Ready",
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Cleanup temp file reliably, even if the processing crashes
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+    
+
+# --- Endpoint 4: Db conflict ---
+# Note: Changed to `def` because SQLAlchemy is synchronous. Added None checks.
+@app.get("/api/v1/cadastre/db-conflict/{ulpin_1}/{ulpin_2}")
+def check_database_conflict(ulpin_1: str, ulpin_2: str, db: Session = Depends(get_db)):
+    """Offloads 3D topological intersection checks directly to PostGIS."""
+    try:
+        # Raw SQL leveraging PostGIS native ST_3DIntersects
+        query = text("""
+            SELECT ST_3DIntersects(
+                (SELECT geometry_3d FROM cadastral_parcels_3d WHERE id = :id1),
+                (SELECT geometry_3d FROM cadastral_parcels_3d WHERE id = :id2)
+            ) as is_conflict;
+        """)
+        
+        result = db.execute(query, {"id1": ulpin_1, "id2": ulpin_2}).fetchone()
+        
+        # Safely check if the result or the inner row value is None
+        if result is None or result[0] is None:
+            raise HTTPException(status_code=404, detail="One or both ULPINs not found in database.")
+            
+        return {
+            "ulpin_1": ulpin_1,
+            "ulpin_2": ulpin_2,
+            "spatial_conflict_detected": result[0],
+            "computation_engine": "PostGIS Native"
+        }
+    except HTTPException:
+        # Re-raise standard HTTP exceptions
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
