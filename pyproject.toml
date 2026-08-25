@@ -1,0 +1,25 @@
+[project]
+name = "mimi"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Surydevx", email = "219320689+Surydevx@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "geopandas>=1.1.4",
+    "psycopg2-binary>=2.9.12",
+    "pydantic>=2.13.4",
+    "shapely>=2.1.2",
+    "sqlalchemy>=2.0.52",
+    "uvicorn>=0.52.4",
+]
+
+[project.scripts]
+mimi = "mimi:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
