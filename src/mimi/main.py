@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import uvicorn
 
 # Relative imports within the src/mimi package structure
-from .anomaly_detector import CadastralAnomalyDetector
+from .anomaly_detector import MLCadastralAnomalyDetector
 from .database import get_db
 from .egc_topology import VolumetricParcel
 from .fusion_engine import calculate_bayesian_fusion
@@ -31,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-detector = CadastralAnomalyDetector(tolerance_meters=0.5)
+detector = MLCadastralAnomalyDetector()
 
 # Initialize the global in-memory Octree (Covering a massive coordinate grid)
 global_boundary = BoundingBox(0, 10000, 0, 10000, -500, 5000)

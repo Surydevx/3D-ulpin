@@ -10,7 +10,7 @@ with engine.connect() as conn:
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
     
     # 2. Read and execute the schema.sql file
-    with open("schema.sql", "r") as f:
+    with open("src/mimi/schema.sql", "r") as f:
         conn.execute(text(f.read()))
         
     conn.commit()
