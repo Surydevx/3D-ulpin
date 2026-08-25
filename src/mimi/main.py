@@ -8,7 +8,7 @@ import uvicorn
 # Relative imports for the src/mimi package structure
 from .ulpin_generator import generate_3d_ulpin
 from .anomaly_detector import CadastralAnomalyDetector
-from .fusion_engine import calculate_fused_height
+from .fusion_engine import calculate_bayesian_fusion
 from .egc_topology import VolumetricParcel
 from .database import get_db
 
@@ -16,10 +16,11 @@ app = FastAPI(title="3D Cadastral Compiler API", version="1.0")
 detector = CadastralAnomalyDetector(tolerance_meters=0.5)
 
 # --- Pydantic Models for API Inputs ---
+# --- Pydantic Models for API Inputs ---
 class SensorData(BaseModel):
     source_name: str
     height_m: float
-    weight: float
+    variance: float  # Changed from weight to variance
 
 class BuildingValidationRequest(BaseModel):
     parent_2d_ulpin: str
@@ -44,15 +45,19 @@ async def root():
     return {"system": "HexCode 3D Cadastral Compiler API", "status": "Online", "docs_url": "/docs"}
 
 # --- Endpoint 1: Validation and Database Persistence ---
+# --- Endpoint 1: Validation and Database Persistence ---
 @app.post("/api/v1/cadastre/validate-building")
 async def validate_building(request: BuildingValidationRequest, db: Session = Depends(get_db)):
     try:
-        # 1. Data Fusion
+        # 1. Data Fusion (Bayesian)
         evidence_dicts = [s.model_dump() for s in request.sensor_evidence]
-        observed_h = calculate_fused_height(evidence_dicts)
         
-        total_weight = sum(s.weight for s in request.sensor_evidence)
-        aggregate_confidence = min(total_weight / 3.0, 0.99)
+        # Unpack the tuple: fused height (mu) and uncertainty (sigma)
+        observed_h, uncertainty = calculate_bayesian_fusion(evidence_dicts)
+        
+        # Derive confidence from statistical uncertainty (max 99% confidence)
+        # e.g., an uncertainty of 0.05m gives a 95% confidence score
+        aggregate_confidence = min(max(0.0, 1.0 - uncertainty), 0.99)
         
         # 2. ULPIN Generation
         ulpin_data = generate_3d_ulpin(

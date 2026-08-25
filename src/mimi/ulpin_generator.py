@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 # 1. Define the Coordinate Geometry Bounds (Example: India's approximate bounding box)
 LAT_MIN, LAT_MAX = 6.0, 36.0
@@ -9,6 +10,9 @@ ELEV_MIN, ELEV_MAX = -50.0, 9000.0 # From underground tunnels to the Himalayas i
 # 2^21 = 2,097,152 distinct grid points per dimension.
 BITS_PER_DIM = 21
 MAX_GRID_VAL = (1 << BITS_PER_DIM) - 1
+
+# Generate a secure environment salt (In production, load this from an .env file)
+SYSTEM_SALT = os.environ.get("HEXCODE_SALT", "d8f9a2c4e6b10...")
 
 def normalize_coordinate(value: float, min_val: float, max_val: float) -> int:
     """
@@ -45,7 +49,7 @@ def generate_3d_ulpin(lat: float, lon: float, elevation: float, parent_2d_ulpin:
     spatial_hash = encode_morton_3d(x_int, y_int, z_int)
     
     # 3. Generate Checksum for integrity 
-    hash_input = f"{parent_2d_ulpin}:{spatial_hash}".encode('utf-8')
+    hash_input = f"{parent_2d_ulpin}:{spatial_hash}:{SYSTEM_SALT}".encode('utf-8') # added this system salt variable here.
     checksum = hashlib.sha256(hash_input).hexdigest()[:8].upper() # 8-character hex
     
     # 4. Construct final identifier
@@ -56,19 +60,3 @@ def generate_3d_ulpin(lat: float, lon: float, elevation: float, parent_2d_ulpin:
         "morton_index": spatial_hash,
         "checksum": checksum
     }
-
-# --- Testing the Logic ---
-if __name__ == "__main__":
-    # Test with coordinates for a hypothetical underground tunnel in Delhi
-    test_lat = 28.6139
-    test_lon = 77.2090
-    test_elevation = -15.5 # 15.5 meters underground
-    parent_parcel = "IN-DL-45982"
-    
-    result = generate_3d_ulpin(test_lat, test_lon, test_elevation, parent_parcel)
-    
-    print(f"Parent 2D Parcel: {parent_parcel}")
-    print(f"Raw Coordinates: Lat: {test_lat}, Lon: {test_lon}, Elev: {test_elevation}m")
-    print(f"1D Spatial Hash (Morton): {result['morton_index']}")
-    print(f"Cryptographic Checksum: {result['checksum']}")
-    print(f"Final Validated 3D ULPIN: {result['ulpin_3d']}")
