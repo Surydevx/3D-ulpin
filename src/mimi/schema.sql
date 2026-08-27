@@ -48,4 +48,4 @@ CREATE TABLE IF NOT EXISTS evidence_graph (
 
 -- 3. Create a 3D Spatial Index (GIST) for accelerated queries
 CREATE INDEX IF NOT EXISTS idx_cadastral_geom_3d 
-ON cadastral_parcels_3d USING GIST (geometry_3d);
+ON cadastral_parcels_3d USING GIST (geometry_3d gist_geometry_ops_nd);
