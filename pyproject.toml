@@ -14,12 +14,14 @@ dependencies = [
     "httpx>=0.28.1",
     "numpy>=2.5.2",
     "open3d>=0.19.0",
+    "opencv-python>=5.0.0.93",
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "python-multipart>=0.0.32",
     "scikit-learn>=1.9.0",
     "shapely>=2.1.2",
     "sqlalchemy>=2.0.52",
+    "ultralytics>=8.4.130",
     "uvicorn>=0.52.4",
 ]
 

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from .vision_segmentation import DroneVisionPipeline
 import uvicorn
 
 # Relative imports within the src/mimi package structure
@@ -21,6 +22,9 @@ from .ulpin_generator import generate_3d_ulpin
 
 # --- Application & Service Initialization ---
 app = FastAPI(title="3D Cadastral Compiler API", version="1.0")
+
+# Initialize the YOLOv8 Vision Pipeline globally so weights load only once
+vision_pipeline = DroneVisionPipeline()
 
 # --- Enable CORS for Web Frontend ---
 app.add_middleware(
@@ -245,6 +249,33 @@ def check_database_conflict(ulpin_1: str, ulpin_2: str, db: Session = Depends(ge
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Endpoint 5: Drone Imagery Vision Segmentation ---
+@app.post("/api/v1/cadastre/ingest-drone")
+def ingest_drone_imagery(ulpin_id: str, file: UploadFile = File(...)):
+    """Ingests 2D drone orthomosaics and extracts geometric footprints via YOLO."""
+    temp_file_path = f"temp_{uuid.uuid4()}_{file.filename}"
+    
+    try:
+        # 1. Save the uploaded drone image
+        with open(temp_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # 2. Execute Vision ML Pipeline
+        footprint_data = vision_pipeline.extract_footprint_polygon(temp_file_path)
+        
+        return {
+            "ulpin_id": ulpin_id,
+            "status": "FOOTPRINT_EXTRACTED",
+            "polygon_data": footprint_data,
+            "computational_complexity": "O(N) Pixel Inference"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # 3. Clean up the system memory
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 
 if __name__ == "__main__":
