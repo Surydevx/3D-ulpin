@@ -296,5 +296,50 @@ def get_job_status(job_id: str):
         return {"job_id": job_id, "status": job_result.state}
 
 
+# --- Endpoint 7: Retrieve All 3D Parcels for Visualization ---
+@app.get("/api/v1/cadastre/parcels")
+def get_all_parcels(db: Session = Depends(get_db)):
+    """
+    Pulls all 3D cadastral parcels from PostGIS, converting 
+    polyhedral geometries into GeoJSON for front-end rendering.
+    """
+    try:
+        query = text("""
+            SELECT 
+                id, 
+                parent_2d_ulpin, 
+                confidence_score, 
+                topology_status, 
+                ST_AsGeoJSON(geometry_3d) as geojson_geom,
+                x_min, x_max, y_min, y_max, z_min, z_max
+            FROM cadastral_parcels_3d;
+        """)
+        
+        result = db.execute(query).fetchall()
+        
+        parcels = []
+        for row in result:
+            parcels.append({
+                "ulpin_3d": row[0],
+                "parent_2d_ulpin": row[1],
+                "confidence_score": row[2],
+                "topology_status": row[3],
+                # Parse the PostGIS GeoJSON string back into a Python dict
+                "geometry": row[4], 
+                "bounds": {
+                    "x_min": row[5], "x_max": row[6],
+                    "y_min": row[7], "y_max": row[8],
+                    "z_min": row[9], "z_max": row[10]
+                }
+            })
+            
+        return {
+            "total_parcels": len(parcels),
+            "parcels": parcels
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
