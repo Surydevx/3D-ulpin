@@ -505,3 +505,24 @@ Using YOLOv8 for segmentation and then mapping the raster masks to vector polygo
 * **The Geographic Disconnect:** Your pipeline currently returns `footprint_2d_pixels`. A cadastre cannot function on pixel coordinates (e.g., `X: 450, Y: 800`). Before this data reaches `egc_topology.py` or the database, it must be georeferenced. You will need to apply an Affine Transformation to convert those image pixels into actual EPSG:32643 UTM meters.
 
 How are you currently handling the coordinate transformation for the drone imagery—do you have a world file (`.tfw` or `.jgw`) associated with your test images, or do you need to build a geospatial projection matrix next?
+
+============================================================
+
+This is the original version of your Bayesian fusion logic. While the core mathematical formula (updating the Gaussian mean and variance) is textbook Bayes, running this exact code in a real-world sensor environment has three major vulnerabilities.
+
+Here is a breakdown of the mistakes in this original version and how to fix them:
+
+1. The "Blind Trust" Flaw (No Outlier Rejection)
+If you pass three sensors into this function—two drones reading 18.1m and one LiDAR laser that accidentally hit a tree branch at 4.5m—this code will mathematically fuse the tree branch into your building height.
+
+Improvement: You must implement a median-based consensus check to filter out extreme anomalies before the Bayesian math ever starts.
+
+2. Arbitrary Prior Anchoring
+This code sets the initial belief (the prior) using sources[0]. In Bayesian statistics, if your first sensor has a terrible variance (low confidence), it forces all subsequent, high-quality sensors to work harder to "correct" the bad baseline.
+
+Improvement: Sort the sources list by variance first. Anchor your initial fused_mu using the sensor with the highest confidence (lowest variance).
+
+3. Division-by-Zero Risk
+You handle absolute zero variance with if fused_var + meas_var == 0: continue. While this stops a crash, skipping a sensor entirely just because it claims high confidence isn't ideal.
+
+Improvement: Clamp the variance to a microscopic minimum (like 1e-6) at the start of the function. This guarantees numerical stability without discarding data.
