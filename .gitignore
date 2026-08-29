@@ -9,3 +9,5 @@ wheels/
 # Virtual environments
 .venv
 bildstein_station1_xyz_intensity_rgb.txt
+.env
+meow.md
