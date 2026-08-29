@@ -52,8 +52,9 @@ class SensorData(BaseModel):
 
 class BuildingValidationRequest(BaseModel):
     parent_2d_ulpin: str
-    latitude: float
-    longitude: float
+    easting_x: float          # Updated from latitude
+    northing_y: float         # Updated from longitude
+    footprint_coords: List[Tuple[float, float]]  # REQUIRED to build the 3D shape in PostGIS
     registered_height_m: float
     sensor_evidence: List[SensorData]
 
@@ -81,7 +82,6 @@ def root():
 
 
 # --- Endpoint 1: Validation and Database Persistence ---
-# --- Endpoint 1: Validation and Database Persistence ---
 @app.post("/api/v1/cadastre/validate-building")
 def validate_building(
     request: BuildingValidationRequest, db: Session = Depends(get_db)
@@ -94,14 +94,14 @@ def validate_building(
 
         # 2. Generate 3D Morton Code Identity
         ulpin_data = generate_3d_ulpin(
-            lat=request.latitude,
-            lon=request.longitude,
-            elevation=observed_h,
+            easting_x=request.easting_x,     # Updated parameters
+            northing_y=request.northing_y,
+            elevation_z=observed_h,
             parent_2d_ulpin=request.parent_2d_ulpin,
         )
         ulpin_id = ulpin_data["ulpin_3d"]
 
-        # 3. Run the ML Anomaly Detection (Isolation Forest)
+        # 3. ML Anomaly Detection (Isolation Forest)
         validation_report = detector.evaluate_vertical_development(
             ulpin=ulpin_id,
             h_registered=request.registered_height_m,
@@ -109,11 +109,22 @@ def validate_building(
             sensor_confidence=aggregate_confidence,
         )
 
-        # 4. PRIMARY INSERT: Save the core cadastral parcel
+        # 4. Construct the WKT (Well-Known Text) Polygon for PostGIS
+        # Closes the loop by ensuring the last point matches the first point
+        coords = request.footprint_coords
+        if coords[0] != coords[-1]:
+            coords.append(coords[0])
+        polygon_wkt = "POLYGON((" + ", ".join([f"{x} {y}" for x, y in coords]) + "))"
+
+        # 5. PRIMARY INSERT: Save core cadastral parcel WITH Geometry
         insert_parcel_query = text("""
             INSERT INTO cadastral_parcels_3d 
-            (id, parent_2d_ulpin, confidence_score, topology_status) 
-            VALUES (:id, :parent_id, :confidence, :status)
+            (id, parent_2d_ulpin, confidence_score, topology_status, geometry_3d) 
+            VALUES (
+                :id, :parent_id, :confidence, :status,
+                -- Use standard SQL CAST to avoid SQLAlchemy colon parsing errors
+                ST_Extrude(ST_GeomFromText(:poly_wkt, 32643), 0.0, 0.0, CAST(:height AS float8))
+            )
             ON CONFLICT (id) DO NOTHING;
         """)
 
@@ -124,10 +135,12 @@ def validate_building(
                 "parent_id": request.parent_2d_ulpin,
                 "confidence": aggregate_confidence,
                 "status": validation_report["status"],
+                "poly_wkt": polygon_wkt,
+                "height": observed_h
             },
         )
 
-        # 5. SECONDARY INSERT: Build the Evidence Graph
+        # 6. SECONDARY INSERT: Build the Evidence Graph
         insert_evidence_query = text("""
             INSERT INTO evidence_graph 
             (parcel_id, source_type, vertical_accuracy_cm, reliability_weight) 
@@ -152,7 +165,7 @@ def validate_building(
                 }
             )
 
-        # 6. COMMIT TRANSACTION: Lock both tables simultaneously
+        # 7. COMMIT TRANSACTION: Lock both tables simultaneously
         db.commit()
 
         return {
