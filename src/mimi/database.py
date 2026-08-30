@@ -1,15 +1,20 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = "postgresql://postgres:hexcode_admin@localhost:5432/postgres"
+# 1. Strict Environment Fetching (Fail-Closed)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Systems Upgrade: High-Concurrency Connection Pooling
+if not DATABASE_URL:
+    raise ValueError("CRITICAL: DATABASE_URL environment variable is missing. Halting execution to prevent insecure state.")
+
+# 2. Optimized Concurrency Connection Pooling
 engine = create_engine(
     DATABASE_URL,
-    pool_size=50,          # Keep 50 connections open and ready
-    max_overflow=100,      # Allow up to 100 extra connections during massive spikes
-    pool_timeout=30,       # Wait up to 30 seconds before timing out
-    pool_recycle=1800      # Refresh connections every 30 mins to prevent stale drops
+    pool_size=20,          
+    max_overflow=50,       
+    pool_timeout=30,       
+    pool_recycle=1800      
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -1,6 +1,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+.pytest_cache/
 build/
 dist/
 wheels/
@@ -9,3 +10,5 @@ wheels/
 # Virtual environments
 .venv
 bildstein_station1_xyz_intensity_rgb.txt
+.env
+meow.md

@@ -1,31 +1,30 @@
 [project]
 name = "mimi"
 version = "0.1.0"
-description = "Add your description here"
+description = "HexCode 3D Cadastral System"
 readme = "README.md"
 authors = [
     { name = "Surydevx", email = "219320689+Surydevx@users.noreply.github.com" }
 ]
 requires-python = ">=3.12, <3.13"
 dependencies = [
-    "asyncio>=4.0.0",
     "celery>=5.6.3",
     "fastapi>=0.141.1",
     "geopandas>=1.1.4",
     "httpx>=0.28.1",
     "numpy>=2.5.2",
     "open3d>=0.19.0",
-    "opencv-python>=5.0.0.93",
-    "pandas>=3.0.5",
-    "psycopg2-binary>=2.9.12",
-    "pydantic>=2.13.4",
-    "python-multipart>=0.0.32",
-    "redis>=8.1.0",
-    "scikit-learn>=1.9.0",
-    "shapely>=2.1.2",
-    "sqlalchemy>=2.0.52",
-    "ultralytics>=8.4.130",
-    "uvicorn>=0.52.4",
+    "opencv-python>=4.10.0.84",
+    "pandas>=2.2.0",
+    "psycopg2-binary>=2.9.10",
+    "pydantic>=2.10.0",
+    "python-multipart>=0.0.20",
+    "redis>=5.2.0",
+    "scikit-learn>=1.6.0",
+    "shapely>=2.0.7",
+    "sqlalchemy>=2.0.38",
+    "ultralytics>=8.3.0",
+    "uvicorn>=0.34.0",
 ]
 
 [project.scripts]
@@ -34,3 +33,28 @@ mimi = "mimi:main"
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:joblib.*:",
+    "ignore::DeprecationWarning:starlette.*:",
+    "ignore::DeprecationWarning:fastapi.*:"
+]
+
+# --- Force Lightweight CPU-Only PyTorch ---
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

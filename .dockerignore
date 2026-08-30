@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Python & Virtual Environments
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Large Datasets & Local Media
+Sample_Data/
+*.ply
+*.csv
+*.pt
+
+# Secrets & Local Config
+.env
+*.log

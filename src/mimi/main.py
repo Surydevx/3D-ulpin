@@ -29,7 +29,7 @@ SHARED_UPLOAD_DIR = "/tmp/mimi_uploads"
 os.makedirs(SHARED_UPLOAD_DIR, exist_ok=True)
 
 # --- Application & Service Initialization ---
-app = FastAPI(title="3D Cadastral Compiler API", version="1.0")
+app = FastAPI(title="HexCode 3D Cadastral API", version="1.0.0")
 
 # --- Enable CORS for Web Frontend ---
 app.add_middleware(
@@ -52,8 +52,9 @@ class SensorData(BaseModel):
 
 class BuildingValidationRequest(BaseModel):
     parent_2d_ulpin: str
-    latitude: float
-    longitude: float
+    easting_x: float          # Updated from latitude
+    northing_y: float         # Updated from longitude
+    footprint_coords: List[Tuple[float, float]]  # REQUIRED to build the 3D shape in PostGIS
     registered_height_m: float
     sensor_evidence: List[SensorData]
 
@@ -81,7 +82,6 @@ def root():
 
 
 # --- Endpoint 1: Validation and Database Persistence ---
-# --- Endpoint 1: Validation and Database Persistence ---
 @app.post("/api/v1/cadastre/validate-building")
 def validate_building(
     request: BuildingValidationRequest, db: Session = Depends(get_db)
@@ -94,14 +94,14 @@ def validate_building(
 
         # 2. Generate 3D Morton Code Identity
         ulpin_data = generate_3d_ulpin(
-            lat=request.latitude,
-            lon=request.longitude,
-            elevation=observed_h,
+            easting_x=request.easting_x,     # Updated parameters
+            northing_y=request.northing_y,
+            elevation_z=observed_h,
             parent_2d_ulpin=request.parent_2d_ulpin,
         )
         ulpin_id = ulpin_data["ulpin_3d"]
 
-        # 3. Run the ML Anomaly Detection (Isolation Forest)
+        # 3. ML Anomaly Detection (Isolation Forest)
         validation_report = detector.evaluate_vertical_development(
             ulpin=ulpin_id,
             h_registered=request.registered_height_m,
@@ -109,11 +109,22 @@ def validate_building(
             sensor_confidence=aggregate_confidence,
         )
 
-        # 4. PRIMARY INSERT: Save the core cadastral parcel
+        # 4. Construct the WKT (Well-Known Text) Polygon for PostGIS
+        # Closes the loop by ensuring the last point matches the first point
+        coords = request.footprint_coords
+        if coords[0] != coords[-1]:
+            coords.append(coords[0])
+        polygon_wkt = "POLYGON((" + ", ".join([f"{x} {y}" for x, y in coords]) + "))"
+
+        # 5. PRIMARY INSERT: Save core cadastral parcel WITH Geometry
         insert_parcel_query = text("""
             INSERT INTO cadastral_parcels_3d 
-            (id, parent_2d_ulpin, confidence_score, topology_status) 
-            VALUES (:id, :parent_id, :confidence, :status)
+            (id, parent_2d_ulpin, confidence_score, topology_status, geometry_3d) 
+            VALUES (
+                :id, :parent_id, :confidence, :status,
+                -- Use standard SQL CAST to avoid SQLAlchemy colon parsing errors
+                ST_Extrude(ST_GeomFromText(:poly_wkt, 32643), 0.0, 0.0, CAST(:height AS float8))
+            )
             ON CONFLICT (id) DO NOTHING;
         """)
 
@@ -124,10 +135,12 @@ def validate_building(
                 "parent_id": request.parent_2d_ulpin,
                 "confidence": aggregate_confidence,
                 "status": validation_report["status"],
+                "poly_wkt": polygon_wkt,
+                "height": observed_h
             },
         )
 
-        # 5. SECONDARY INSERT: Build the Evidence Graph
+        # 6. SECONDARY INSERT: Build the Evidence Graph
         insert_evidence_query = text("""
             INSERT INTO evidence_graph 
             (parcel_id, source_type, vertical_accuracy_cm, reliability_weight) 
@@ -152,7 +165,7 @@ def validate_building(
                 }
             )
 
-        # 6. COMMIT TRANSACTION: Lock both tables simultaneously
+        # 7. COMMIT TRANSACTION: Lock both tables simultaneously
         db.commit()
 
         return {
@@ -301,7 +314,7 @@ def get_job_status(job_id: str):
 def get_all_parcels(db: Session = Depends(get_db)):
     """
     Pulls all 3D cadastral parcels from PostGIS, converting 
-    polyhedral geometries into GeoJSON for front-end rendering.
+    polyhedral geometries into WKT and bounding boxes.
     """
     try:
         query = text("""
@@ -310,8 +323,10 @@ def get_all_parcels(db: Session = Depends(get_db)):
                 parent_2d_ulpin, 
                 confidence_score, 
                 topology_status, 
-                ST_AsGeoJSON(geometry_3d) as geojson_geom,
-                x_min, x_max, y_min, y_max, z_min, z_max
+                ST_AsText(geometry_3d) as geometry_wkt,
+                ST_XMin(geometry_3d) as x_min, ST_XMax(geometry_3d) as x_max, 
+                ST_YMin(geometry_3d) as y_min, ST_YMax(geometry_3d) as y_max, 
+                ST_ZMin(geometry_3d) as z_min, ST_ZMax(geometry_3d) as z_max
             FROM cadastral_parcels_3d;
         """)
         
@@ -324,8 +339,7 @@ def get_all_parcels(db: Session = Depends(get_db)):
                 "parent_2d_ulpin": row[1],
                 "confidence_score": row[2],
                 "topology_status": row[3],
-                # Parse the PostGIS GeoJSON string back into a Python dict
-                "geometry": row[4], 
+                "geometry_wkt": row[4],
                 "bounds": {
                     "x_min": row[5], "x_max": row[6],
                     "y_min": row[7], "y_max": row[8],

@@ -1,22 +1,25 @@
 import hashlib
 import os
 
-# 1. Define the Coordinate Geometry Bounds (Example: India's approximate bounding box)
-LAT_MIN, LAT_MAX = 6.0, 36.0
-LON_MIN, LON_MAX = 68.0, 98.0
-ELEV_MIN, ELEV_MAX = -50.0, 9000.0 # From underground tunnels to the Himalayas in meters
+# 1. Projected Coordinate Geometry Bounds (Meters instead of Degrees)
+# Assuming EPSG:32643 (UTM) to match your schema.sql
+X_MIN, X_MAX = 100000.0, 900000.0     # Easting in meters
+Y_MIN, Y_MAX = 600000.0, 4000000.0    # Northing in meters
+Z_MIN, Z_MAX = -50.0, 9000.0          # Elevation in meters
 
 # Use 21 bits per dimension (yields a 63-bit integer when interleaved)
 # 2^21 = 2,097,152 distinct grid points per dimension.
 BITS_PER_DIM = 21
 MAX_GRID_VAL = (1 << BITS_PER_DIM) - 1
 
-# Generate a secure environment salt (In production, load this from an .env file)
-SYSTEM_SALT = os.environ.get("HEXCODE_SALT", "d8f9a2c4e6b10...")
+# 2. Strict Environment Fetching (Fail-Closed Cryptography)
+SYSTEM_SALT = os.environ.get("HEXCODE_SALT")
+if not SYSTEM_SALT:
+    raise ValueError("CRITICAL: HEXCODE_SALT missing. Halting ULPIN generation to prevent insecure hashing.")
 
 def normalize_coordinate(value: float, min_val: float, max_val: float) -> int:
     """
-    Maps a continuous float coordinate to a discrete integer grid using an affine transformation.
+    Maps a continuous float coordinate (in meters) to a discrete integer grid.
     """
     if value < min_val or value > max_val:
         raise ValueError(f"Coordinate {value} is out of bounds [{min_val}, {max_val}]")
@@ -36,21 +39,21 @@ def encode_morton_3d(x: int, y: int, z: int) -> int:
         morton |= ((z & (1 << i)) << (2 * i + 2))
     return morton
 
-def generate_3d_ulpin(lat: float, lon: float, elevation: float, parent_2d_ulpin: str) -> dict:
+def generate_3d_ulpin(easting_x: float, northing_y: float, elevation_z: float, parent_2d_ulpin: str) -> dict:
     """
     Generates a mathematically rigorous and secure 3D ULPIN.
     """
-    # 1. Map to integer grid
-    x_int = normalize_coordinate(lon, LON_MIN, LON_MAX)
-    y_int = normalize_coordinate(lat, LAT_MIN, LAT_MAX)
-    z_int = normalize_coordinate(elevation, ELEV_MIN, ELEV_MAX)
+    # 1. Map to uniform metric integer grid
+    x_int = normalize_coordinate(easting_x, X_MIN, X_MAX)
+    y_int = normalize_coordinate(northing_y, Y_MIN, Y_MAX)
+    z_int = normalize_coordinate(elevation_z, Z_MIN, Z_MAX)
     
     # 2. Generate 1D Spatial Hash (Morton Code)
     spatial_hash = encode_morton_3d(x_int, y_int, z_int)
     
     # 3. Generate Checksum for integrity 
-    hash_input = f"{parent_2d_ulpin}:{spatial_hash}:{SYSTEM_SALT}".encode('utf-8') # added this system salt variable here.
-    checksum = hashlib.sha256(hash_input).hexdigest()[:8].upper() # 8-character hex
+    hash_input = f"{parent_2d_ulpin}:{spatial_hash}:{SYSTEM_SALT}".encode('utf-8')
+    checksum = hashlib.sha256(hash_input).hexdigest()[:8].upper()
     
     # 4. Construct final identifier
     ulpin_3d = f"{parent_2d_ulpin}-Z{spatial_hash}-{checksum}"
