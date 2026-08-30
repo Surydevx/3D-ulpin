@@ -1,14 +1,59 @@
-# Python-generated files
+# Python & Bytecode
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments (uv & venv)
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Build & Packaging
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+*.egg
 
-# Virtual environments
-.venv
-bildstein_station1_xyz_intensity_rgb.txt
+# Static Documentation (Zensical)
+site/
+.cache/
+
+# Environment Variables & Secrets
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# Large Spatial Datasets & Raw Scans
+*.ply
+*.pcd
+*.las
+*.laz
+*.csv
+bildstein_station1_xyz_intensity_rgb.txt
+
+# ML Checkpoints
+# *.pt
+# *.pth
+
+# Logs & Temporary Files
+*.log
+*.tmp
 meow.md
+
+# IDE & OS Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# workflows
+.github/workflows/docs.yml
