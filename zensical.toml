@@ -20,7 +20,8 @@ nav = [
 
 # MathJax for rendering LaTeX equations
 extra_javascript = [
-  "https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"
+  "javascripts/mathjax.js",
+  "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"
 ]
 
 [project.theme]
