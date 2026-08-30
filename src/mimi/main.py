@@ -314,7 +314,7 @@ def get_job_status(job_id: str):
 def get_all_parcels(db: Session = Depends(get_db)):
     """
     Pulls all 3D cadastral parcels from PostGIS, converting 
-    polyhedral geometries into GeoJSON for front-end rendering.
+    polyhedral geometries into WKT and bounding boxes.
     """
     try:
         query = text("""
@@ -323,8 +323,10 @@ def get_all_parcels(db: Session = Depends(get_db)):
                 parent_2d_ulpin, 
                 confidence_score, 
                 topology_status, 
-                ST_AsGeoJSON(geometry_3d) as geojson_geom,
-                x_min, x_max, y_min, y_max, z_min, z_max
+                ST_AsText(geometry_3d) as geometry_wkt,
+                ST_XMin(geometry_3d) as x_min, ST_XMax(geometry_3d) as x_max, 
+                ST_YMin(geometry_3d) as y_min, ST_YMax(geometry_3d) as y_max, 
+                ST_ZMin(geometry_3d) as z_min, ST_ZMax(geometry_3d) as z_max
             FROM cadastral_parcels_3d;
         """)
         
@@ -337,8 +339,7 @@ def get_all_parcels(db: Session = Depends(get_db)):
                 "parent_2d_ulpin": row[1],
                 "confidence_score": row[2],
                 "topology_status": row[3],
-                # Parse the PostGIS GeoJSON string back into a Python dict
-                "geometry": row[4], 
+                "geometry_wkt": row[4],
                 "bounds": {
                     "x_min": row[5], "x_max": row[6],
                     "y_min": row[7], "y_max": row[8],
