@@ -1,31 +1,94 @@
-# HexCode 3D Cadastral Compiler
+# HexCode 3D Cadastral System
 
-A high-performance backend engineered for multidimensional property boundary management. This system abandons standard visual rendering to focus entirely on mathematical rigor, exact geometric computation, and statistical probability, optimized natively for high-throughput Linux environments.
+HexCode is a backend system for managing 3D property boundaries. It skips the visual rendering fluff to focus entirely on the math: processing messy spatial data, verifying intersecting volumes, and securely storing 3D infrastructure.
 
-## Core Computational Architecture
+It handles everything from raw LiDAR point clouds to aerial drone surveys using a mix of exact geometric computation (EGC) and statistical fusion.
 
-The compiler processes unstructured geospatial data through four rigorous mathematical pipelines:
+## Project Mechanics
 
-* **Combinatorial Spatial Indexing:** Extracts strict coordinate boundaries from raw LiDAR point clouds, partitioning the data into an in-memory Octree to reduce spatial query times to $\mathcal{O}(\log n)$.
-* **Probabilistic Data Fusion:** Reconciles multi-sensor noise (e.g., LiDAR vs. drone arrays) using Bayesian inference to calculate exact volumetric parameters based on statistical variance.
-* **Unsupervised Machine Learning:** Utilizes a Scikit-Learn `IsolationForest` trained on Monte Carlo probability distributions to isolate unauthorized vertical developments in a high-dimensional feature space.
-* **Cryptographic Identity:** Generates immutable spatial identifiers (ULPIN) utilizing 3D Morton code bit-shifting and salted SHA-256 checksums.
+The system relies on five main engines to process and validate data:
 
-## API Interfaces & Inputs
-
-The system ingests and computes distinct data structures via a concurrency-safe FastAPI routing layer:
-
-* **Statistical Vectors (`/validate-building`):** Accepts JSON arrays of sensor measurements and statistical uncertainties to compute the true geometric height and ML-driven validation status.
-* **Coordinate Geometry (`/check-conflict`):** Ingests volumetric footprint arrays to execute mathematical proofs of topological non-intersection ($\mathcal{V}_{A}\cap\mathcal{V}_{B}=\emptyset$) between infrastructure layers.
-* **Raw Point Clouds (`/ingest-lidar`):** Parses raw multipart `.ply` file uploads directly into the combinatorial spatial memory index.
-* **PostGIS C-Engine (`/db-conflict`):** Offloads complex multidimensional intersection checks directly to the PostgreSQL database layer for optimal speed.
-
-## Performance & Deployment
-
-The backend utilizes robust systems-engineering principles to prevent bottlenecks under heavy computational and memory loads.
-
-* **High-Concurrency Setup:** Engineered with SQLAlchemy connection pooling and strict asynchronous semaphores to prevent thread exhaustion.
-* **Stress-Tested:** Proven to handle 500+ simultaneous stochastic requests driven by an asynchronous Monte Carlo simulation with zero dropped connections.
-* **Execution:** Install dependencies via `uv`, configure the PostGIS credentials, and launch the server utilizing `uvicorn src.mimi.main:app --reload`.
+* **Spatial Indexing:** We chunk raw point clouds into an in-memory Octree, which keeps spatial query times down to $\mathcal{O}(\log n)$.
+* **Bayesian Sensor Fusion:** Sensors lie. When we get conflicting height data (e.g., a drone scan vs. a ground survey), we use inverse-variance Bayesian inference to calculate the actual ground truth and drop the outliers.
+* **Anomaly Detection:** An unsupervised Scikit-Learn `IsolationForest` monitors footprint and height variances to flag illegal or anomalous vertical developments.
+* **3D ULPIN Generation:** We create deterministic, immutable spatial IDs by combining 3D Morton code bit-shifting with salted SHA-256 checksums.
+* **Collision Detection:** Checks if two infrastructure volumes (like a basement and a proposed metro tunnel) intersect. We use Shapely for fast in-memory checks and PostGIS SFCGAL (`ST_3DIntersects`) for persistent database validation.
 
 ---
+
+## Tech Stack
+
+* **API & Core:** Python 3.12, FastAPI, SQLAlchemy 2.0, Pydantic
+* **Async Task Queue:** Celery + Redis
+* **Math & ML:** Shapely, Open3D, Scikit-Learn, Ultralytics YOLOv8-Seg
+* **Database:** PostgreSQL + PostGIS (with SFCGAL 3D extension)
+* **Environment:** `uv` (package management), Docker Compose
+
+---
+
+## API Endpoints
+
+### 1. Synchronous (Immediate Response)
+
+These endpoints handle mathematical computations and database writes on the fly.
+
+| Method | Endpoint | What it does |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/cadastre/validate-building` | Takes sensor data and 2D footprints. Computes the real height, runs anomaly checks, generates a 3D ULPIN, and saves a `POLYHEDRALSURFACE Z` to PostGIS. |
+| `POST` | `/api/v1/cadastre/check-conflict` | In-memory check to prove two spatial volumes do not intersect. |
+| `GET` | `/api/v1/cadastre/db-conflict/{id1}/{id2}` | Asks PostGIS to verify if two saved parcels collide in 3D space. |
+| `GET` | `/api/v1/cadastre/parcels` | Returns all 3D parcels as Well-Known Text (WKT) with computed bounding boxes for frontend mapping. |
+
+### 2. Asynchronous (Background Workers)
+
+Heavy processing jobs offloaded to Celery. Submit a file and poll the status using the returned `job_id`.
+
+| Method | Endpoint | What it does |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/cadastre/ingest-lidar` | Upload a `.ply` point cloud. Open3D downsamples it, removes the ground plane via RANSAC, and isolates structures with DBSCAN. |
+| `POST` | `/api/v1/cadastre/ingest-drone` | Upload a `.jpg`/`.png` drone image. YOLOv8-Seg and the Ramer-Douglas-Peucker algorithm extract the vector footprints. |
+| `GET` | `/api/v1/cadastre/job-status/{id}` | Check if your Celery task is `PENDING`, `COMPLETED`, or `FAILED`. |
+
+---
+
+## Local Setup
+
+### 1. Configure the Environment
+
+Clone the repo and set up your environment variables. 
+
+```bash
+cp .env.example .env
+
+```
+
+Make sure your `.env` contains:
+
+```env
+DATABASE_URL="postgresql://ulpin_worker:SuperSecretStrongPassword@db:5432/ulpin_db"
+HEXCODE_SALT="your_secure_random_string"
+POSTGRES_SUPER_PASS="AdminSuperPassword"
+```
+
+### 2. Boot the Stack
+
+The entire architecture is containerized:
+
+```bash
+docker compose up --build
+```
+
+This spins up PostgreSQL, Redis, the Celery worker, and the FastAPI server.
+
+* Interactiive API Docs: `http://127.0.0.1:8000/docs`
+
+### 3. Run the Tests
+
+We use `pytest` with mocked database connections and Celery workers to keep tests fast and isolated.
+
+*If running locally outside of Docker:*
+
+```bash
+uv sync
+uv run --env-file .env pytest -v
+```

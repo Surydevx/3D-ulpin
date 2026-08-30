@@ -29,7 +29,7 @@ SHARED_UPLOAD_DIR = "/tmp/mimi_uploads"
 os.makedirs(SHARED_UPLOAD_DIR, exist_ok=True)
 
 # --- Application & Service Initialization ---
-app = FastAPI(title="3D Cadastral Compiler API", version="1.0")
+app = FastAPI(title="HexCode 3D Cadastral API", version="1.0.0")
 
 # --- Enable CORS for Web Frontend ---
 app.add_middleware(

@@ -1,0 +1,15 @@
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS postgis_sfcgal;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'ulpin_worker') THEN
+        CREATE ROLE ulpin_worker WITH LOGIN PASSWORD 'SuperSecretStrongPassword';
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE ulpin_db TO ulpin_worker;
+GRANT USAGE, CREATE ON SCHEMA public TO ulpin_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ulpin_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ulpin_worker;
