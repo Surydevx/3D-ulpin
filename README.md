@@ -1,8 +1,10 @@
-# HexCode 3D Cadastral System
+# 3D ULPIN- A 3D Cadastral System
 
-HexCode is a backend system for managing 3D property boundaries. It skips the visual rendering fluff to focus entirely on the math: processing messy spatial data, verifying intersecting volumes, and securely storing 3D infrastructure.
+3D-ULPIN is a spatial computing backend. It provides a robust API to process, store, validate, and retrieve 3D cadastral parcels and their volumetric boundaries.
 
-It handles everything from raw LiDAR point clouds to aerial drone surveys using a mix of exact geometric computation (EGC) and statistical fusion.
+The entire API backend system is containerized for seamless reproducibility and isolation across different host environments.
+
+It handles varied inputs like raw LiDAR point clouds, aerial drone surveys using a mix of exact geometric computation (EGC) and statistical fusion.
 
 ## Project Mechanics
 
