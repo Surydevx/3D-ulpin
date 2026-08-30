@@ -45,6 +45,8 @@ features = [
   "search.highlight",
 ]
 
+favicon = "assets/favicon.png"
+
 [project.theme.icon]
 logo = "lucide/hexagon"
 
